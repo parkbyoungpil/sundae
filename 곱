@@ -1,0 +1,150 @@
+#include <stdio.h>
+#include <stdlib.h> // strtod
+#include <string.h> // strchr
+#include <ctype.h>  // isdigit
+#include <math.h>
+#include <stdbool.h>
+
+// --- 1. 행렬 연산 및 유틸리티 함수 ---
+
+/**
+ * @brief 행렬을 [[...], [...]] 형식으로 인쇄 (줄바꿈 없음!)
+ */
+void print_matrix(int rows, int cols, double M[rows][cols]) {
+    printf("[");
+    for (int i = 0; i < rows; i++) {
+        printf("[");
+        for (int j = 0; j < cols; j++) {
+            printf("%.1f", M[i][j]);
+            if (j < cols - 1) printf(", ");
+        }
+        printf("]");
+        if (i < rows - 1) printf(", ");
+    }
+    printf("]"); // <<<--- \n (줄바꿈) 제거
+}
+
+/**
+ * @brief 행렬 곱셈 (C = A * B).
+ */
+int multiply_matrices(int M, int N, int P, double A[M][N], double B[N][P], double C[M][P]) {
+    for (int i = 0; i < M; i++) {
+        for (int j = 0; j < P; j++) {
+            C[i][j] = 0.0;
+            for (int k = 0; k < N; k++) {
+                C[i][j] += A[i][k] * B[k][j];
+            }
+        }
+    }
+    return 1;
+}
+
+
+// --- 2. 핵심 파싱 로직 ---
+
+/**
+ * @brief "[[...]] ( ... )" 문자열에서 [[...]] 부분만 파싱
+ */
+int parse_matrix_string(char* str, double* data_out, int* rows_out, int* cols_out) {
+    int r = 0, c = 0, c_temp = 0, data_index = 0;
+    
+    // (2x3) 부분은 무시하고 [[...]] 부분만 파싱
+    char* p = strchr(str, '['); 
+    if (p == NULL) return 0;
+    p++; 
+
+    while (*p == '[') {
+        r++;
+        p++; 
+        c_temp = 0;
+
+        while (*p != ']' && *p != '\0') {
+            double val = strtod(p, &p);
+            data_out[data_index++] = val;
+            c_temp++;
+            while (*p == ' ' || *p == ',') p++;
+        }
+        if (*p == '\0') return 0;
+        p++; 
+        
+        if (r == 1) {
+            c = c_temp;
+        } else if (c_temp != c) {
+            return 0; 
+        }
+        while (*p == ' ' || *p == ',') p++;
+    }
+
+    *rows_out = r;
+    *cols_out = c;
+    return (r > 0 && c > 0);
+}
+
+
+// --- 3. 메인 함수 ---
+int main() {
+    char buffer_A[1024], buffer_B[1024];
+    
+    double temp_A[100]; 
+    double temp_B[100];
+    
+    int R_A, C_A; // A (R_A x C_A)
+    int R_B, C_B; // B (R_B x C_B)
+
+    // --- 행렬 A 입력 및 파싱 ---
+    // 사용자가 "[[...]] (2x3)" 전체를 입력해도
+    // parse_matrix_string은 [[...]]만 보고 R_A, C_A를 결정
+    printf("A = ");
+    fgets(buffer_A, 1024, stdin);
+    if (!parse_matrix_string(buffer_A, temp_A, &R_A, &C_A)) {
+        printf("오류: 행렬 A의 형식이 잘못되었습니다.\n");
+        return 1;
+    }
+    
+    // --- 행렬 B 입력 및 파싱 ---
+    printf("B = ");
+    fgets(buffer_B, 1024, stdin);
+    if (!parse_matrix_string(buffer_B, temp_B, &R_B, &C_B)) {
+        printf("오류: 행렬 B의 형식이 잘못되었습니다.\n");
+        return 1;
+    }
+
+    // --- VLA 선언 및 데이터 복사 ---
+    double A[R_A][C_A];
+    double B[R_B][C_B];
+
+    for (int i = 0; i < R_A; i++) {
+        for (int j = 0; j < C_A; j++) {
+            A[i][j] = temp_A[i * C_A + j];
+        }
+    }
+    for (int i = 0; i < R_B; i++) {
+        for (int j = 0; j < C_B; j++) {
+            B[i][j] = temp_B[i * C_B + j];
+        }
+    }
+    
+    // --- 계산 결과 출력 ---
+    printf("\n--- 계산 결과 ---\n");
+
+    // A * B (행렬 곱셈)
+    printf("C = A * B = ");
+    
+    if (C_A != R_B) {
+        printf("[오류: 곱셈 불가 (A의 열 %d != B의 행 %d)]\n", C_A, R_B);
+    } else {
+        // C (R_A x C_B)
+        double C_mul[R_A][C_B]; 
+        
+        // (M=R_A, N=C_A, P=C_B)
+        multiply_matrices(R_A, C_A, C_B, A, B, C_mul);
+        
+        // 1. [[...]] 출력 (줄바꿈 없음)
+        print_matrix(R_A, C_B, C_mul);
+        
+        // 2. (M x P) 형식으로 차원 및 줄바꿈 출력
+        printf(" (%d x %d)\n", R_A, C_B);
+    }
+
+    return 0;
+}
