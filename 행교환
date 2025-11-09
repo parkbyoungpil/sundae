@@ -1,0 +1,177 @@
+#include <stdio.h>
+#include <stdlib.h> // strtod
+#include <string.h> // strchr, memcpy
+#include <ctype.h>  // isdigit
+#include <math.h>
+#include <stdbool.h>
+
+// --- 1. 기본 행 연산 함수 (ERO Toolkit) ---
+
+/**
+ * @brief (Type 1) R_i와 R_j를 교환
+ */
+void swap_rows(int R_in, int C_in, double A[R_in][C_in], int i, int j) {
+    if (i == j) return;
+    for (int col = 0; col < C_in; col++) {
+        double temp = A[i][col];
+        A[i][col] = A[j][col];
+        A[j][col] = temp;
+    }
+}
+
+/**
+ * @brief (Type 2) R_i에 k를 곱함
+ */
+void scale_row(int R_in, int C_in, double A[R_in][C_in], int i, double k) {
+    for (int col = 0; col < C_in; col++) {
+        A[i][col] *= k;
+    }
+}
+
+/**
+ * @brief (Type 3) R_j에 (R_i * k)를 더함 (R_j + k*R_i -> R_j)
+ */
+void add_scaled_row(int R_in, int C_in, double A[R_in][C_in], int i, int j, double k) {
+    for (int col = 0; col < C_in; col++) {
+        A[j][col] += A[i][col] * k;
+    }
+}
+
+
+// --- 2. 유틸리티 및 파싱 함수 ---
+
+/**
+ * @brief 행렬을 [[...], [...]] 형식으로 인쇄
+ */
+void print_matrix(int rows, int cols, double M[rows][cols]) {
+    printf("[");
+    for (int i = 0; i < rows; i++) {
+        printf("[");
+        for (int j = 0; j < cols; j++) {
+            printf("%.1f", M[i][j]);
+            if (j < cols - 1) printf(", ");
+        }
+        printf("]");
+        if (i < rows - 1) printf(", ");
+    }
+    printf("]\n");
+}
+
+/**
+ * @brief "[[...]]" 문자열을 파싱
+ */
+int parse_matrix_string(char* str, double* data_out, int* rows_out, int* cols_out) {
+    int r = 0, c = 0, c_temp = 0, data_index = 0;
+    char* p = strchr(str, '[');
+    if (p == NULL) return 0;
+    p++; 
+
+    while (*p == '[') {
+        r++; p++; c_temp = 0;
+        while (*p != ']' && *p != '\0') {
+            double val = strtod(p, &p);
+            data_out[data_index++] = val;
+            c_temp++;
+            while (*p == ' ' || *p == ',') p++;
+        }
+        if (*p == '\0') return 0;
+        p++; 
+        if (r == 1) c = c_temp;
+        else if (c_temp != c) return 0; 
+        while (*p == ' ' || *p == ',') p++;
+    }
+    *rows_out = r; *cols_out = c;
+    return (r > 0 && c > 0);
+}
+
+
+// --- 3. 메인 함수 ---
+int main() {
+    char buffer_M[1024];
+    double temp_M[100];
+    int R, C;
+
+    // 1. 행렬 입력 (최초 1회)
+    printf("M = ");
+    fgets(buffer_M, 1024, stdin);
+    if (!parse_matrix_string(buffer_M, temp_M, &R, &C)) {
+        printf("오류: 행렬 형식이 잘못되었습니다.\n");
+        return 1;
+    }
+
+    // 2. VLA 선언
+    double M_initial[R][C]; // 원본 (백업)
+    double M_working[R][C]; // 작업용
+
+    // 3. 원본(M_initial)에 데이터 복사
+    for (int i = 0; i < R; i++) {
+        for (int j = 0; j < C; j++) {
+            M_initial[i][j] = temp_M[i * C + j];
+        }
+    }
+
+    // 4. 무한 반복 메뉴 시작
+    while (true) {
+        
+        // [핵심] 작업용 행렬(M_working)을 원본(M_initial)으로 초기화
+        memcpy(M_working, M_initial, sizeof(M_initial));
+
+        printf("\n===================================\n");
+        printf("--- 현재 원본 행렬 (M) ---\n");
+        print_matrix(R, C, M_working);
+
+        // 5. 사용자에게 수행할 연산 선택
+        int choice = 0;
+        printf("\n수행할 연산을 선택하십시오:\n");
+        printf("  1: 행 교환 (swap_rows)\n");
+        printf("  2: 행 스케일 (scale_row)\n");
+        printf("  3: 행 더하기 (add_scaled_row)\n");
+        printf("  0: 종료\n");
+        printf("선택: ");
+        scanf("%d", &choice);
+
+        // 6. 0번(종료) 처리
+        if (choice == 0) {
+            break; // while 루프 탈출
+        }
+
+        // 7. 연산별 파라미터 입력 및 실행 (M_working에 적용)
+        int i, j;
+        double k;
+
+        switch (choice) {
+            case 1: // swap_rows
+                printf("  교환할 두 행 (i j) 입력: ");
+                scanf("%d %d", &i, &j);
+                swap_rows(R, C, M_working, i, j);
+                printf("\n--- swap_rows(M, %d, %d) 적용 후 ---\n", i, j);
+                break;
+                
+            case 2: // scale_row
+                printf("  스케일할 행 (i)과 상수 (k) 입력: ");
+                scanf("%d %lf", &i, &k);
+                scale_row(R, C, M_working, i, k);
+                printf("\n--- scale_row(M, %d, %.1f) 적용 후 ---\n", i, k);
+                break;
+                
+            case 3: // add_scaled_row
+                printf("  소스 행(i), 타겟 행(j), 상수(k) 입력 (R_j + k*R_i): ");
+                scanf("%d %d %lf", &i, &j, &k);
+                add_scaled_row(R, C, M_working, i, j, k);
+                printf("\n--- add_scaled_row(M, %d, %d, %.1f) 적용 후 ---\n", i, j, k);
+                break;
+                
+            default:
+                printf("오류: 잘못된 선택입니다.\n");
+                // 버퍼 비우기 (잘못된 문자 입력 시 무한 루프 방지)
+                while (getchar() != '\n'); 
+                continue; // 루프의 처음으로
+        }
+
+        // 8. 최종 결과 출력
+        print_matrix(R, C, M_working);
+    } // while(true) 끝
+
+    printf("\n프로그램을 종료합니다.\n");
+    return 0;
+} 
