@@ -1,0 +1,179 @@
+#include <stdio.h>
+#include <stdlib.h> // strtod
+#include <string.h> // strchr, strcpy
+#include <ctype.h>  // isdigit
+#include <math.h>   // fabs
+#include <stdbool.h>
+
+// 부동소수점 오차 한계
+#define EPSILON 1e-9
+
+// --- 1. 기본 행 연산 툴킷 (ERO Toolkit) ---
+
+void swap_rows(int R_in, int C_in, double A[R_in][C_in], int i, int j) {
+    if (i == j) return;
+    for (int col = 0; col < C_in; col++) {
+        double temp = A[i][col];
+        A[i][col] = A[j][col];
+        A[j][col] = temp;
+    }
+}
+
+void add_scaled_row(int R_in, int C_in, double A[R_in][C_in], int i, int j, double k) {
+    for (int col = 0; col < C_in; col++) {
+        A[j][col] += A[i][col] * k;
+    }
+}
+
+
+// --- 2. 가우스 소거법 (Forward Elimination) ---
+
+/**
+ * @brief 행렬 M을 REF로 변환하고, 'annotations' 배열에 연산 기록
+ */
+void to_ref(int rows, int cols, double M[rows][cols], char annotations[rows][100]) {
+    int pivot_row = 0; 
+    
+    for (int col = 0; col < cols; col++) {
+        if (pivot_row >= rows) break;
+        
+        // 1. 피벗 찾기
+        int pivot_found_at = -1;
+        for (int i = pivot_row; i < rows; i++) {
+            if (fabs(M[i][col]) > EPSILON) {
+                pivot_found_at = i;
+                break;
+            }
+        }
+
+        if (pivot_found_at != -1) {
+            // 2-1.피벗 교환 시, 주석 기록
+            if (pivot_found_at != pivot_row) {
+                // 주석 문자열 생성
+                sprintf(annotations[pivot_row], "(R%d <-> R%d 피벗팅)", pivot_row+1, pivot_found_at+1);
+                
+                char temp_annot[100];
+                strcpy(temp_annot, annotations[pivot_row]);
+                strcpy(annotations[pivot_row], annotations[pivot_found_at]);
+                strcpy(annotations[pivot_found_at], temp_annot);
+
+                swap_rows(rows, cols, M, pivot_row, pivot_found_at);
+            }
+
+            // 2-2. 피벗 아래 0 만들기
+            for (int i = pivot_row + 1; i < rows; i++) {
+                if (fabs(M[i][col]) > EPSILON) { 
+                    double factor = -M[i][col] / M[pivot_row][col];
+                    // (R_i = R_i + (factor * R_pivot_row))
+                    add_scaled_row(rows, cols, M, pivot_row, i, factor);
+                    
+                }
+            }
+            pivot_row++;
+        }
+    }
+}
+
+
+// --- 3. 유틸리티 및 파싱 함수 ---
+
+/**
+ * @brief 행렬을 멀티라인으로 변환환
+ */
+void print_matrix(int rows, int cols, double M[rows][cols], char annotations[rows][100]) {
+    printf("["); // 전체 시작
+    for (int i = 0; i < rows; i++) {
+        if (i == 0) printf("[");
+        else        printf("\n ["); // 줄바꿈 및 들여쓰기
+        
+        for (int j = 0; j < cols; j++) {
+            if (fabs(M[i][j]) < EPSILON) {
+                printf("%4.1f", 0.0);
+            } else {
+                printf("%4.1f", M[i][j]);
+            }
+            if (j < cols - 1) printf(", ");
+        }
+        
+        printf("]"); // 행 끝
+        
+        if (strlen(annotations[i]) > 0) {
+            printf(",  %s", annotations[i]);
+        }
+        
+        if (i < rows - 1) printf(",");
+    }
+    printf("]\n"); // 전체 끝
+}
+
+/**
+ * @brief 문자열을 파싱
+ */
+int parse_matrix_string(char* str, double* data_out, int* rows_out, int* cols_out) {
+    int r = 0, c = 0, c_temp = 0, data_index = 0;
+    char* p = strchr(str, '[');
+    if (p == NULL) return 0;
+    p++; 
+
+    while (*p == '[') {
+        r++; p++; c_temp = 0;
+        while (*p != ']' && *p != '\0') {
+            double val = strtod(p, &p);
+            data_out[data_index++] = val;
+            c_temp++;
+            while (*p == ' ' || *p == ',') p++;
+        }
+        if (*p == '\0') return 0;
+        p++; 
+        if (r == 1) c = c_temp;
+        else if (c_temp != c) return 0; 
+        while (*p == ' ' || *p == ',') p++;
+    }
+    *rows_out = r; *cols_out = c;
+    return (r > 0 && c > 0);
+}
+
+
+// --- 4. 메인 함수 ---
+int main() {
+    char buffer_M[1024];
+    double temp_M[100];
+    int R, C;
+
+    // 1. 한 줄 행렬 입력
+    printf("입력 행렬:\nM = ");
+    fgets(buffer_M, 1024, stdin);
+    
+    if (!parse_matrix_string(buffer_M, temp_M, &R, &C)) {
+        printf("오류: 행렬 형식이 잘못되었습니다.\n");
+        return 1;
+    }
+
+    // 2. VLA 선언 및 데이터 복사
+    double M[R][C];
+    for (int i = 0; i < R; i++) {
+        for (int j = 0; j < C; j++) {
+            M[i][j] = temp_M[i * C + j];
+        }
+    }
+    
+    // 3. 주석을 저장할 배열 선언
+    char annotations[R][100];
+    for(int i=0; i<R; i++) {
+        annotations[i][0] = '\0'; // 모두 빈 문자열로 초기화
+    }
+    
+    // 4. 원본 출력 (주석 배열을 넘기지만 비어있음)
+    printf("\n--- 원본 행렬 ---\n");
+    print_matrix(R, C, M, annotations);
+
+    // 5.가우스 소거법 (REF 변환) 실행
+    // 이 함수가 M과 annotations 배열을 모두 수정
+    to_ref(R, C, M, annotations);
+
+    // 6. 결과 출력 (주석이 채워진 배열을 전달)
+    printf("\nREF 변환 결과 (결과는 유일하지 않을 수 있음):\n");
+    print_matrix(R, C, M, annotations);
+
+    return 0;
+}
