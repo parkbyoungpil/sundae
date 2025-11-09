@@ -1,0 +1,172 @@
+#include <stdio.h>
+#include <stdlib.h> // strtod
+#include <string.h> // strchr
+#include <ctype.h>  // isdigit
+#include <math.h>   // fabs (절대값)
+#include <stdbool.h>
+
+// 부동소수점 오차 한계
+#define EPSILON 1e-9
+
+// --- 1. 행렬 특징 판별 함수 (신규) ---
+
+/**
+ * @brief 대칭행렬(Symmetric)인지 판별 (A[i][j] == A[j][i])
+ * @return 1 (참), 0 (거짓)
+ */
+int is_symmetric(int N, double A[N][N]) {
+    for (int i = 0; i < N; i++) {
+        // j < i : 대각선의 아랫부분만 검사
+        for (int j = 0; j < i; j++) {
+            // A[i][j] (아래) 와 A[j][i] (위)가 다른지 비교
+            // (fabs(a - b) > EPSILON)은 (a != b)의 안전한 버전
+            if (fabs(A[i][j] - A[j][i]) > EPSILON) {
+                return 0; // 대칭 아님
+            }
+        }
+    }
+    return 1; // 모든 검사 통과
+}
+
+/**
+ * @brief 상삼각행렬(Upper Triangular)인지 판별 (i > j 이면 A[i][j] == 0)
+ * @return 1 (참), 0 (거짓)
+ */
+int is_upper_triangular(int N, double A[N][N]) {
+    for (int i = 0; i < N; i++) {
+        // j < i : 대각선의 아랫부분 (i > j)
+        for (int j = 0; j < i; j++) {
+            // A[i][j]가 0이 아닌지 (절대값이 EPSILON보다 큰지) 확인
+            if (fabs(A[i][j]) > EPSILON) {
+                return 0; // 0이 아님
+            }
+        }
+    }
+    return 1; // 모두 0임 (참)
+}
+
+/**
+ * @brief 하삼각행렬(Lower Triangular)인지 판별 (i < j 이면 A[i][j] == 0)
+ * @return 1 (참), 0 (거짓)
+ */
+int is_lower_triangular(int N, double A[N][N]) {
+    for (int i = 0; i < N; i++) {
+        // j > i : 대각선의 윗부분 (i < j)
+        for (int j = i + 1; j < N; j++) {
+            // A[i][j]가 0이 아닌지 확인
+            if (fabs(A[i][j]) > EPSILON) {
+                return 0; // 0이 아님
+            }
+        }
+    }
+    return 1; // 모두 0임 (참)
+}
+
+
+// --- 2. 핵심 파싱 로직 (재사용) ---
+
+/**
+ * @brief "[[...]]" 문자열을 파싱하여 R, C와 데이터를 추출
+ */
+int parse_matrix_string(char* str, double* data_out, int* rows_out, int* cols_out) {
+    int r = 0, c = 0, c_temp = 0, data_index = 0;
+    
+    char* p = strchr(str, '[');
+    if (p == NULL) return 0;
+    p++; 
+
+    while (*p == '[') {
+        r++;
+        p++; 
+        c_temp = 0;
+
+        while (*p != ']' && *p != '\0') {
+            double val = strtod(p, &p);
+            data_out[data_index++] = val;
+            c_temp++;
+            while (*p == ' ' || *p == ',') p++;
+        }
+        if (*p == '\0') return 0;
+        p++; 
+        
+        if (r == 1) {
+            c = c_temp;
+        } else if (c_temp != c) {
+            return 0; 
+        }
+        while (*p == ' ' || *p == ',') p++;
+    }
+
+    *rows_out = r;
+    *cols_out = c;
+    return (r > 0 && c > 0);
+}
+
+
+// --- 3. 메인 함수 ---
+int main() {
+    char buffer_A[1024], buffer_B[1024];
+    double temp_A[100], temp_B[100];
+    int R_A, C_A, R_B, C_B;
+
+    // 출력 형식을 위한 헬퍼 (0: 거짓, 1: 참)
+    const char* bool_to_str[] = {"(거짓)", "(참)"};
+
+    // --- 행렬 A 입력 및 파싱 ---
+    printf("A = ");
+    fgets(buffer_A, 1024, stdin);
+    if (!parse_matrix_string(buffer_A, temp_A, &R_A, &C_A)) {
+        printf("오류: 행렬 A의 형식이 잘못되었습니다.\n");
+        return 1;
+    }
+    // **정방행렬(N x N) 검사**
+    if (R_A != C_A) {
+        printf("오류: 행렬 A는 정방행렬(N x N)이 아닙니다. (입력: %d x %d)\n", R_A, C_A);
+        return 1;
+    }
+    
+    // --- 행렬 B 입력 및 파싱 ---
+    printf("B = ");
+    fgets(buffer_B, 1024, stdin);
+    if (!parse_matrix_string(buffer_B, temp_B, &R_B, &C_B)) {
+        printf("오류: 행렬 B의 형식이 잘못되었습니다.\n");
+        return 1;
+    }
+    // **정방행렬(N x N) 검사**
+    if (R_B != C_B) {
+        printf("오류: 행렬 B는 정방행렬(N x N)이 아닙니다. (입력: %d x %d)\n", R_B, C_B);
+        return 1;
+    }
+
+    // --- VLA 선언 및 데이터 복사 ---
+    // N=R_A=C_A, M=R_B=C_B (변수명 통일)
+    int N_A = R_A;
+    int N_B = R_B;
+    double A[N_A][N_A];
+    double B[N_B][N_B];
+
+    for (int i = 0; i < N_A; i++) {
+        for (int j = 0; j < N_A; j++) {
+            A[i][j] = temp_A[i * N_A + j];
+        }
+    }
+    for (int i = 0; i < N_B; i++) {
+        for (int j = 0; j < N_B; j++) {
+            B[i][j] = temp_B[i * N_B + j];
+        }
+    }
+    
+    printf("\n--- 판별 결과 ---\n");
+    
+    // A 판별
+    int sym_A = is_symmetric(N_A, A);
+    printf("A는 대칭행렬인가? %d %s\n", sym_A, bool_to_str[sym_A]);
+
+    // B 판별
+    int upper_B = is_upper_triangular(N_B, B);
+    int lower_B = is_lower_triangular(N_B, B);
+    printf("B는 상삼각행렬인가? %d %s\n", upper_B, bool_to_str[upper_B]);
+    printf("B는 하삼각행렬인가? %d %s\n", lower_B, bool_to_str[lower_B]);
+
+    return 0;
+}
